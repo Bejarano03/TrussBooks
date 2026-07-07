@@ -1,21 +1,22 @@
+// 1. DECLARE OUR MODULES
+// This tells the Rust compiler to look for these files in the src/ folder.
+mod models;
+mod db;
+mod handlers;
+
 use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
 use std::env;
 use std::net::SocketAddr;
 
-// Hold shared application state, so all API routes safely access PostgreSQL
-#[derive(Clone)]
-struct AppState {
-    db: PgPool,
-}
+// 2. IMPORT FROM OUR MODULES
+use crate::models::AppState;
+use crate::db::seed_chart_of_accounts;
+use crate::handlers::{health_check, create_journal_entry};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = env::var("DATABASE_URL")
         .expect("FATAL: DATABASE_URL environment variable is not set in .env");
     
-        println!("Initializing TrussBooks Core Accounting Engine...");
+    println!("⚡ Initializing TrussBooks Core Accounting Engine...");
 
     // PostgreSQL Connection Pool
     let pool = PgPoolOptions::new()
@@ -33,35 +34,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .expect("FATAL: Failed to connect to PostgreSQL database.");
     
-        println!("Successfully connected to PostgreSQL!");
+    println!("✅ Successfully connected to PostgreSQL!");
 
-    // Verify Database Schema
-    let account_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
-        .fetch_one(&pool)
+    // Execute the database seed process via our db module
+    let total_accounts = seed_chart_of_accounts(&pool)
         .await
-        .expect("FATAL: Could not query the accounts table. Did you run the SQL migration?");
+        .expect("FATAL: Failed to execute Chart of Accounts seeding.");
+    
+    println!("📊 Ledger State: {} accounts loaded in Chart of Accounts.", total_accounts);
 
-    println!("Current Chart of Accounts size: {} accounts loaded.", account_count.0);
+    // Build application state via our models module
+    let state = AppState { db: pool };
 
-    // Build application state
-    let state = AppState{ db: pool };
-
-    // Define API routes
+    // Define API routes via our handlers module
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/journal-entries", post(create_journal_entry))
         .with_state(state);
 
-    // Start Axum
-    let addr = SocketAddr::from(([127, 0, 0 ,1], 3000));
-    println!("Server listening on http://{}", addr);
+    // Start Axum server
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    println!("🚀 Server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
     Ok(())
-}
-
-// Simple health check
-async fn health_check(State(_state): State<AppState>) -> impl IntoResponse {
-    (StatusCode::OK, "TrussBooks Engine is UP and running natively!")
 }
