@@ -1,0 +1,10 @@
+**/target
+
+# Ignore environment variable files (secrets/passwords)
+.env
+*.env
+
+# Ignore system and IDE files
+.DS_Store
+.vscode/
+.idea/
