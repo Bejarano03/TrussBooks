@@ -4,3 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Async runtime 
+tokio = { version = "1.36", features = ["full"] }
+
+# Web framework for REST API
+axum = "0.7"
+
+# Reads .env files
+dotenvy = "0.15"
+
+# SQL
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "rust_decimal"] }
