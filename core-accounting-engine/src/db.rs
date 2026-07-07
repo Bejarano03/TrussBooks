@@ -1,4 +1,5 @@
 use sqlx::PgPool;
+use crate::models::CreateJournalEntry;
 
 /// Checks if the Chart of Accounts is empty, and if so, seeds it with 
 /// standard construction industry accounts.
@@ -32,8 +33,7 @@ pub async fn seed_chart_of_accounts(pool: &PgPool) -> Result<i64, sqlx::Error> {
         .bind(code)
         .bind(name)
         .bind(acct_type)
-        .map(|_| ())
-        .execute(pool)
+        .execute(pool) // Note: No .map() here!
         .await?;
     }
 
@@ -42,4 +42,74 @@ pub async fn seed_chart_of_accounts(pool: &PgPool) -> Result<i64, sqlx::Error> {
         .await?;
 
     Ok(final_count.0)
+}
+
+/// Safely inserts a validated journal entry and its lines into the database
+/// using an ACID-compliant transaction.
+pub async fn save_journal_entry(
+    pool: &PgPool,
+    payload: &CreateJournalEntry,
+) -> Result<String, String> {
+    // 1. Start a database transaction
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    // 2. Insert the Journal Entry Header
+    // We let Postgres cast the string to a DATE and return the UUID as a string 
+    // to keep our Rust types clean.
+    let entry_record: (String,) = sqlx::query_as(
+        r#"
+        INSERT INTO journal_entries (entry_date, description, reference_number)
+        VALUES ($1::date, $2, $3)
+        RETURNING id::text
+        "#
+    )
+    .bind(&payload.entry_date)
+    .bind(&payload.description)
+    .bind(&payload.reference_number)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| format!("Failed to insert journal entry header: {}", e))?;
+
+    let entry_id = entry_record.0;
+
+    // 3. Insert each line item
+    for line in &payload.lines {
+        // First, look up the internal database UUID for the provided account code
+        let account_record: Option<(String,)> = sqlx::query_as(
+            "SELECT id::text FROM accounts WHERE code = $1"
+        )
+        .bind(&line.account_code)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let account_id = match account_record {
+            Some(record) => record.0,
+            None => {
+                // If the account code is invalid, returning an Err here will 
+                // automatically abort the transaction and rollback the header!
+                return Err(format!("Invalid account code provided: {}", line.account_code));
+            }
+        };
+
+        // Insert the line, casting our text UUIDs back to proper DB uuids
+        sqlx::query(
+            r#"
+            INSERT INTO journal_lines (journal_entry_id, account_id, amount, job_code)
+            VALUES ($1::uuid, $2::uuid, $3, $4)
+            "#
+        )
+        .bind(&entry_id)
+        .bind(&account_id)
+        .bind(&line.amount)
+        .bind(&line.job_code)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| format!("Failed to insert journal line: {}", e))?;
+    }
+
+    // 4. Commit the transaction (Saves everything permanently)
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    Ok(entry_id)
 }
