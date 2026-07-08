@@ -7,10 +7,12 @@ use axum::{
 
 // Import our shared models and our new DB function!
 use crate::db::{
-    get_account_ledger, get_journal_entry, get_trial_balance, list_accounts, list_journal_entries,
-    save_journal_entry,
+    create_account, deactivate_account, get_account_by_code, get_account_ledger, get_journal_entry,
+    get_trial_balance, list_accounts, list_journal_entries, save_journal_entry, update_account,
 };
-use crate::models::{AppState, CreateJournalEntry, JournalEntriesQuery};
+use crate::models::{
+    AppState, CreateAccountRequest, CreateJournalEntry, JournalEntriesQuery, UpdateAccountRequest,
+};
 
 /// Simple health check route to verify the API is alive.
 pub async fn health_check(State(_state): State<AppState>) -> impl IntoResponse {
@@ -72,6 +74,133 @@ pub async fn get_accounts(State(state): State<AppState>) -> impl IntoResponse {
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
                 "status": "error",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn get_account(
+    State(state): State<AppState>,
+    Path(account_code): Path<String>,
+) -> impl IntoResponse {
+    match get_account_by_code(&state.db, &account_code).await {
+        Ok(Some(account)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "account": account })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Account was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "query_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn create_account_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateAccountRequest>,
+) -> impl IntoResponse {
+    if let Err(validation_error) = payload.validate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "rejected",
+                "reason": validation_error
+            })),
+        );
+    }
+
+    match create_account(&state.db, &payload).await {
+        Ok(account) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "status": "success",
+                "account": account
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn update_account_handler(
+    State(state): State<AppState>,
+    Path(account_code): Path<String>,
+    Json(payload): Json<UpdateAccountRequest>,
+) -> impl IntoResponse {
+    if let Err(validation_error) = payload.validate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "rejected",
+                "reason": validation_error
+            })),
+        );
+    }
+
+    match update_account(&state.db, &account_code, &payload).await {
+        Ok(Some(account)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "success",
+                "account": account
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Account was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn deactivate_account_handler(
+    State(state): State<AppState>,
+    Path(account_code): Path<String>,
+) -> impl IntoResponse {
+    match deactivate_account(&state.db, &account_code).await {
+        Ok(Some(account)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "success",
+                "account": account
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Account was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
                 "reason": db_error.to_string()
             })),
         ),

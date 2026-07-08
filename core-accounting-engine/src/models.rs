@@ -48,6 +48,20 @@ impl JournalEntriesQuery {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CreateAccountRequest {
+    pub code: String,
+    pub name: String,
+    pub account_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateAccountRequest {
+    pub name: Option<String>,
+    pub account_type: Option<String>,
+    pub is_active: Option<bool>,
+}
+
 #[derive(Debug, FromRow, Serialize)]
 pub struct AccountResponse {
     pub id: String,
@@ -56,6 +70,45 @@ pub struct AccountResponse {
     pub account_type: String,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
+}
+
+impl CreateAccountRequest {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.code.trim().is_empty() {
+            return Err("Account code cannot be empty.");
+        }
+        if self.name.trim().is_empty() {
+            return Err("Account name cannot be empty.");
+        }
+        if self.account_type.trim().is_empty() {
+            return Err("Account type cannot be empty.");
+        }
+
+        Ok(())
+    }
+}
+
+impl UpdateAccountRequest {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self
+            .name
+            .as_ref()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return Err("Account name cannot be empty.");
+        }
+        if self
+            .account_type
+            .as_ref()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return Err("Account type cannot be empty.");
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, FromRow, Serialize)]

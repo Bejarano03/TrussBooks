@@ -13,8 +13,9 @@ use std::net::SocketAddr;
 // 2. IMPORT FROM OUR MODULES
 use crate::db::seed_chart_of_accounts;
 use crate::handlers::{
-    account_ledger, create_journal_entry, get_accounts, get_journal_entries,
-    get_journal_entry_by_id, health_check, trial_balance,
+    account_ledger, create_account_handler, create_journal_entry, deactivate_account_handler,
+    get_account, get_accounts, get_journal_entries, get_journal_entry_by_id, health_check,
+    trial_balance, update_account_handler,
 };
 use crate::models::AppState;
 
@@ -52,7 +53,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Define API routes via our handlers module
     let app = Router::new()
         .route("/health", get(health_check))
-        .route("/accounts", get(get_accounts))
+        .route("/accounts", get(get_accounts).post(create_account_handler))
+        .route(
+            "/accounts/:account_code",
+            get(get_account).patch(update_account_handler),
+        )
+        .route(
+            "/accounts/:account_code/deactivate",
+            axum::routing::delete(deactivate_account_handler),
+        )
         .route("/accounts/:account_code/ledger", get(account_ledger))
         .route(
             "/journal-entries",
