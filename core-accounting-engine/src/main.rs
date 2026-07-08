@@ -1,22 +1,22 @@
 // 1. DECLARE OUR MODULES
 // This tells the Rust compiler to look for these files in the src/ folder.
-mod models;
 mod db;
 mod handlers;
+mod models;
 
-use axum::{
-    routing::{get, post},
-    Router,
-};
+use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::net::SocketAddr;
 
 // 2. IMPORT FROM OUR MODULES
-use crate::models::AppState;
 use crate::db::seed_chart_of_accounts;
-use crate::handlers::{health_check, create_journal_entry};
+use crate::handlers::{
+    account_ledger, create_journal_entry, get_accounts, get_journal_entries,
+    get_journal_entry_by_id, health_check, trial_balance,
+};
+use crate::models::AppState;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     let database_url = env::var("DATABASE_URL")
         .expect("FATAL: DATABASE_URL environment variable is not set in .env");
-    
+
     println!("⚡ Initializing TrussBooks Core Accounting Engine...");
 
     // PostgreSQL Connection Pool
@@ -33,15 +33,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect(&database_url)
         .await
         .expect("FATAL: Failed to connect to PostgreSQL database.");
-    
+
     println!("✅ Successfully connected to PostgreSQL!");
 
     // Execute the database seed process via our db module
     let total_accounts = seed_chart_of_accounts(&pool)
         .await
         .expect("FATAL: Failed to execute Chart of Accounts seeding.");
-    
-    println!("📊 Ledger State: {} accounts loaded in Chart of Accounts.", total_accounts);
+
+    println!(
+        "📊 Ledger State: {} accounts loaded in Chart of Accounts.",
+        total_accounts
+    );
 
     // Build application state via our models module
     let state = AppState { db: pool };
@@ -49,11 +52,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Define API routes via our handlers module
     let app = Router::new()
         .route("/health", get(health_check))
-        .route("/journal-entries", post(create_journal_entry))
+        .route("/accounts", get(get_accounts))
+        .route("/accounts/:account_code/ledger", get(account_ledger))
+        .route(
+            "/journal-entries",
+            get(get_journal_entries).post(create_journal_entry),
+        )
+        .route("/journal-entries/:entry_id", get(get_journal_entry_by_id))
+        .route("/reports/trial-balance", get(trial_balance))
         .with_state(state);
 
     // Start Axum server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = env::var("PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(3000);
+    let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     println!("🚀 Server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
