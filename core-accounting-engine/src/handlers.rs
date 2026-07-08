@@ -7,11 +7,16 @@ use axum::{
 
 // Import our shared models and our new DB function!
 use crate::db::{
-    create_account, deactivate_account, get_account_by_code, get_account_ledger, get_journal_entry,
-    get_trial_balance, list_accounts, list_journal_entries, save_journal_entry, update_account,
+    create_account, create_business, create_contact, deactivate_account, deactivate_contact,
+    get_account_by_code, get_account_ledger, get_business_by_id, get_contact_by_id,
+    get_journal_entry, get_trial_balance, list_accounts, list_businesses,
+    list_contacts_by_business, list_journal_entries, save_journal_entry, update_account,
+    update_business, update_contact,
 };
 use crate::models::{
-    AppState, CreateAccountRequest, CreateJournalEntry, JournalEntriesQuery, UpdateAccountRequest,
+    AppState, CreateAccountRequest, CreateBusinessRequest, CreateContactRequest,
+    CreateJournalEntry, JournalEntriesQuery, UpdateAccountRequest, UpdateBusinessRequest,
+    UpdateContactRequest,
 };
 
 /// Simple health check route to verify the API is alive.
@@ -74,6 +79,267 @@ pub async fn get_accounts(State(state): State<AppState>) -> impl IntoResponse {
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
                 "status": "error",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn get_businesses(State(state): State<AppState>) -> impl IntoResponse {
+    match list_businesses(&state.db).await {
+        Ok(businesses) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "businesses": businesses })),
+        ),
+        Err(db_error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "status": "error",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn get_business(
+    State(state): State<AppState>,
+    Path(business_id): Path<String>,
+) -> impl IntoResponse {
+    match get_business_by_id(&state.db, &business_id).await {
+        Ok(Some(business)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "business": business })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Business was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "query_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn create_business_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateBusinessRequest>,
+) -> impl IntoResponse {
+    if let Err(validation_error) = payload.validate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "rejected",
+                "reason": validation_error
+            })),
+        );
+    }
+
+    match create_business(&state.db, &payload).await {
+        Ok(business) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "status": "success",
+                "business": business
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn update_business_handler(
+    State(state): State<AppState>,
+    Path(business_id): Path<String>,
+    Json(payload): Json<UpdateBusinessRequest>,
+) -> impl IntoResponse {
+    if let Err(validation_error) = payload.validate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "rejected",
+                "reason": validation_error
+            })),
+        );
+    }
+
+    match update_business(&state.db, &business_id, &payload).await {
+        Ok(Some(business)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "success",
+                "business": business
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Business was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn get_business_contacts(
+    State(state): State<AppState>,
+    Path(business_id): Path<String>,
+) -> impl IntoResponse {
+    match list_contacts_by_business(&state.db, &business_id).await {
+        Ok(contacts) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "contacts": contacts })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "query_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn create_business_contact_handler(
+    State(state): State<AppState>,
+    Path(business_id): Path<String>,
+    Json(payload): Json<CreateContactRequest>,
+) -> impl IntoResponse {
+    if let Err(validation_error) = payload.validate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "rejected",
+                "reason": validation_error
+            })),
+        );
+    }
+
+    match create_contact(&state.db, &business_id, &payload).await {
+        Ok(contact) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "status": "success",
+                "contact": contact
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn get_contact(
+    State(state): State<AppState>,
+    Path(contact_id): Path<String>,
+) -> impl IntoResponse {
+    match get_contact_by_id(&state.db, &contact_id).await {
+        Ok(Some(contact)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "contact": contact })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Contact was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "query_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn update_contact_handler(
+    State(state): State<AppState>,
+    Path(contact_id): Path<String>,
+    Json(payload): Json<UpdateContactRequest>,
+) -> impl IntoResponse {
+    if let Err(validation_error) = payload.validate() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "rejected",
+                "reason": validation_error
+            })),
+        );
+    }
+
+    match update_contact(&state.db, &contact_id, &payload).await {
+        Ok(Some(contact)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "success",
+                "contact": contact
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Contact was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn deactivate_contact_handler(
+    State(state): State<AppState>,
+    Path(contact_id): Path<String>,
+) -> impl IntoResponse {
+    match deactivate_contact(&state.db, &contact_id).await {
+        Ok(Some(contact)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "success",
+                "contact": contact
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "status": "not_found",
+                "reason": "Contact was not found."
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "db_rejected",
                 "reason": db_error.to_string()
             })),
         ),
