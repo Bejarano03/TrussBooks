@@ -7,7 +7,8 @@ pub use requests::{
     JournalEntriesQuery, UpdateAccountRequest, UpdateBusinessRequest, UpdateContactRequest,
 };
 pub use responses::{
-    AccountLedgerLine, AccountResponse, BusinessResponse, ContactResponse, JournalEntryHeader,
-    JournalEntryResponse, JournalEntrySummary, TrialBalanceLine,
+    AccountLedgerLine, AccountResponse, AccountTemplateAccountResponse, AccountTemplateResponse,
+    BusinessResponse, ContactResponse, JournalEntryHeader, JournalEntryResponse,
+    JournalEntrySummary, TrialBalanceLine,
 };
 pub use state::AppState;

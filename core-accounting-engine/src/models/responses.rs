@@ -55,6 +55,29 @@ pub struct ContactResponse {
 }
 
 #[derive(Debug, FromRow, Serialize)]
+pub struct AccountTemplateResponse {
+    pub id: String,
+    pub template_key: String,
+    pub template_name: String,
+    pub business_type: Option<String>,
+    pub industry: Option<String>,
+    pub description: Option<String>,
+    pub is_default: bool,
+    pub account_count: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow, Serialize)]
+pub struct AccountTemplateAccountResponse {
+    pub code: String,
+    pub name: String,
+    pub account_type: String,
+    pub sort_order: i32,
+    pub is_required: bool,
+}
+
+#[derive(Debug, FromRow, Serialize)]
 pub struct JournalEntrySummary {
     pub id: String,
     pub entry_date: NaiveDate,

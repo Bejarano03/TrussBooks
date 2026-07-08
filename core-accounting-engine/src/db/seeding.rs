@@ -1,19 +1,8 @@
+use crate::db::account_templates::list_account_template_accounts;
 use sqlx::PgPool;
 
-/// Checks if the Chart of Accounts is empty, and if so, seeds it with
-/// standard construction industry accounts.
-pub async fn seed_chart_of_accounts(pool: &PgPool) -> Result<i64, sqlx::Error> {
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
-        .fetch_one(pool)
-        .await?;
-
-    if count.0 > 0 {
-        return Ok(count.0); // Already seeded
-    }
-
-    println!("🌱 Seeding standard Construction Industry Chart of Accounts...");
-
-    let accounts = vec![
+fn fallback_construction_accounts() -> Vec<(&'static str, &'static str, &'static str)> {
+    vec![
         ("1010", "Operating Checking", "asset"),
         ("1200", "Accounts Receivable", "asset"),
         ("1250", "Retention Receivable", "asset"),
@@ -23,15 +12,49 @@ pub async fn seed_chart_of_accounts(pool: &PgPool) -> Result<i64, sqlx::Error> {
         ("5010", "Job Materials Expense", "expense"),
         ("5020", "Subcontractor Expense", "expense"),
         ("5030", "Equipment Rental Expense", "expense"),
-    ];
+    ]
+}
 
-    for (code, name, acct_type) in accounts {
-        sqlx::query("INSERT INTO accounts (code, name, type) VALUES ($1, $2, $3::account_type)")
+/// Checks if the Chart of Accounts is empty, and if so, seeds it from the
+/// default account template. This keeps startup deterministic while letting
+/// the template live in data instead of Rust code.
+pub async fn seed_chart_of_accounts(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")
+        .fetch_one(pool)
+        .await?;
+
+    if count.0 > 0 {
+        return Ok(count.0);
+    }
+
+    println!("🌱 Seeding default Chart of Accounts from template...");
+
+    let template_accounts = list_account_template_accounts(pool, "construction_core")
+        .await
+        .unwrap_or_default();
+
+    if template_accounts.is_empty() {
+        for (code, name, acct_type) in fallback_construction_accounts() {
+            sqlx::query(
+                "INSERT INTO accounts (code, name, type) VALUES ($1, $2, $3::account_type)",
+            )
             .bind(code)
             .bind(name)
             .bind(acct_type)
             .execute(pool)
             .await?;
+        }
+    } else {
+        for account in template_accounts {
+            sqlx::query(
+                "INSERT INTO accounts (code, name, type) VALUES ($1, $2, $3::account_type)",
+            )
+            .bind(&account.code)
+            .bind(&account.name)
+            .bind(&account.account_type)
+            .execute(pool)
+            .await?;
+        }
     }
 
     let final_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM accounts")

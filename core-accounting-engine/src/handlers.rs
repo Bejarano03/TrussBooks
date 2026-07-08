@@ -9,9 +9,9 @@ use axum::{
 use crate::db::{
     create_account, create_business, create_contact, deactivate_account, deactivate_contact,
     get_account_by_code, get_account_ledger, get_business_by_id, get_contact_by_id,
-    get_journal_entry, get_trial_balance, list_accounts, list_businesses,
-    list_contacts_by_business, list_journal_entries, save_journal_entry, update_account,
-    update_business, update_contact,
+    get_journal_entry, get_trial_balance, list_account_template_accounts, list_account_templates,
+    list_accounts, list_businesses, list_contacts_by_business, list_journal_entries,
+    save_journal_entry, update_account, update_business, update_contact,
 };
 use crate::models::{
     AppState, CreateAccountRequest, CreateBusinessRequest, CreateContactRequest,
@@ -79,6 +79,44 @@ pub async fn get_accounts(State(state): State<AppState>) -> impl IntoResponse {
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
                 "status": "error",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn get_account_templates(State(state): State<AppState>) -> impl IntoResponse {
+    match list_account_templates(&state.db).await {
+        Ok(templates) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "account_templates": templates })),
+        ),
+        Err(db_error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "status": "error",
+                "reason": db_error.to_string()
+            })),
+        ),
+    }
+}
+
+pub async fn get_account_template(
+    State(state): State<AppState>,
+    Path(template_key): Path<String>,
+) -> impl IntoResponse {
+    match list_account_template_accounts(&state.db, &template_key).await {
+        Ok(accounts) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "template_key": template_key,
+                "accounts": accounts
+            })),
+        ),
+        Err(db_error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "status": "query_rejected",
                 "reason": db_error.to_string()
             })),
         ),
